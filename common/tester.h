@@ -11,6 +11,27 @@
 #include "cuda_timer.h"
 #include "matrix.h"
 
+template<class T>
+__global__ void transpose_native(T *A, T *B, size_t M, size_t N) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;
+  int y = blockIdx.y * blockDim.y + threadIdx.y;
+  if (x < M && y < N) {
+    B[y * M + x] = A[x * N + y];
+  }
+}
+
+void cpuGemm(half *A, half *B, half *C, int M, int N, int K) {
+  for (int i = 0; i < M; ++i) {
+    for (int j = 0; j < N; ++j) {
+      float sum = 0;
+      for (int k = 0; k < K; ++k) {
+        sum += (float)A[i * K + k] * (float)B[k * N + j];
+      }
+      C[i * N + j] = static_cast<half>(sum);
+    }
+  }
+}
+
 class Tester {
 public:
     explicit Tester(size_t M = 512, size_t N = 2048, size_t K = 1024, size_t warmup_iterations = 1,
@@ -33,9 +54,9 @@ public:
         HGEMM_CHECK(m_A);
         m_B = std::make_shared<Matrix>(m_K, m_N, "Matrix B");
         HGEMM_CHECK(m_B);
-        m_C = std::make_shared<Matrix>(m_M, m_N, "Matrix C");
+        m_C = std::make_shared<Matrix>(m_M, m_N, "Matrix C", false);
         HGEMM_CHECK(m_C);
-        m_base = std::make_shared<Matrix>(m_M, m_N, "Matrix Base");
+        m_base = std::make_shared<Matrix>(m_M, m_N, "Matrix Base", false);
         HGEMM_CHECK(m_base);
 
         if (m_enable_check) {
@@ -63,6 +84,8 @@ public:
         m_warmup_time = static_cast<double>(m_cuda_timer.end()) / static_cast<double>(m_warmup_iterations);
         HLOG("Warm up time: %.3f ms", m_warmup_time);
 
+        // cpuGemm(m_A->getHostPtr(), m_B->getHostPtr(), m_C->getHostPtr(), m_M,
+        //         m_N, m_K);
         if (m_enable_check) {
             m_C->moveToHost();
             m_C->checkValue(m_base.get());
@@ -72,7 +95,7 @@ public:
     }
 
 private:
-#if 1
+
     void cublas_tensor_op(half *A, half *B, half *C, size_t M, size_t N, size_t K) {
         cublasHandle_t handle = nullptr;
         HGEMM_CHECK_CUBLAS_ERROR(cublasCreate(&handle));
@@ -82,14 +105,41 @@ private:
         half beta = 0.0;
 
         HGEMM_CHECK_CUBLAS_ERROR(
-            cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, B,
-                         CUDA_R_16F, K, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F,
-                         N, CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+            cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha,
+            B,
+                         CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C,
+                         CUDA_R_16F, N, CUBLAS_COMPUTE_32F,
+                         CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+
+        // auto C_t = std::make_shared<Matrix>(M,N, "C_t");
+        // HGEMM_CHECK(C_t);
+        // C_t->memSetDevice();
+        // HGEMM_CHECK_CUBLAS_ERROR(
+        //     cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K, &alpha,
+        //                  A,
+        //                  CUDA_R_16F, K, B, CUDA_R_16F, N, &beta, C_t->getDevPtr(),
+        //                  CUDA_R_16F, M, CUBLAS_COMPUTE_16F,
+        //                  CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+
+        // dim3 block(32, 8);
+        // dim3 grid((M + block.x - 1) / block.x, (N + block.y - 1) / block.y);
+        // transpose_native<half><<<grid, block>>>(C_t->getDevPtr(), C, M, N);
+        
+        // m_cuda_timer.start();
+        // for (size_t i = 0; i < m_warmup_iterations; ++i) {
+        //   cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B,
+        //                CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
+        //                CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+        // }
+        // m_warmup_time = static_cast<double>(m_cuda_timer.end()) /
+        //                 static_cast<double>(m_warmup_iterations);
+        // HLOG("Cublas-Tensor-Op use: Warm up time: %.3f ms", m_warmup_time);
+
         m_cuda_timer.start();
         for (size_t i = 0; i < m_profiling_iterations; ++i) {
-          cublasGemmEx(handle, CUBLAS_OP_T, CUBLAS_OP_N, N, M, K, &alpha, B,
-                       CUDA_R_16F, K, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
-                       CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+          cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B,
+                       CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
+                       CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
         }
         m_base_time = static_cast<double>(m_cuda_timer.end()) /
                       static_cast<double>(m_profiling_iterations);
@@ -99,7 +149,7 @@ private:
              m_base_time, m_base_throughput);
         HGEMM_CHECK_CUBLAS_ERROR(cublasDestroy(handle));
     }
-#endif
+
     template <typename Func>
     void profile(Func &&hgemm, const std::string &name) {
         m_cuda_timer.start();

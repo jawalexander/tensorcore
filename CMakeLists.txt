@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(TensorCoreGEMM LANGUAGES CUDA CXX C)
+project(TensorCoreGEMMV2 LANGUAGES CUDA CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_ARCHITECTURES 100a)
@@ -14,12 +14,12 @@ find_package(CUDAToolkit REQUIRED)  # 替代旧的find_package(CUDA)
 # # # cuBLAS
 # find_package(CUBLAS REQUIRED)
 # include_directories(${CUBLAS_INCLUDE_DIRS})
-# target_link_libraries(TensorCoreGEMM ${CUBLAS_LIBRARIES})
+# target_link_libraries(TensorCoreGEMMV2 ${CUBLAS_LIBRARIES})
 
 # # # # cuSPARSE
 # find_package(CUSPARSE REQUIRED)
 # include_directories(${CUSPARSE_INCLUDE_DIRS})
-# target_link_libraries(TensorCoreGEMM ${CUSPARSE_LIBRARIES})
+# target_link_libraries(TensorCoreGEMMV2 ${CUSPARSE_LIBRARIES})
 # # OpenMP
 # find_package(OpenMP REQUIRED)
 # include_directories(${OpenMP_INCLUDE_DIRS})
@@ -32,6 +32,7 @@ find_package(CUDAToolkit REQUIRED)  # 替代旧的find_package(CUDA)
 
 include_directories(common)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DCUBLAS_API_H=1")
-add_executable(TensorCoreGEMM hgemm_v1.cu)
-# target_link_libraries(TensorCoreGEMM PRIVATE CUDA::cublas ${CUDA_LIBRARIES} ${OpenMP_LIBRARIES} ${CUB_LIBRARIES})
-target_link_libraries(TensorCoreGEMM PRIVATE CUDA::cublas )
+add_executable(TensorCoreGEMMV2 hgemm_v2.cu)
+add_executable(TensorCoreGEMMV1 hgemm_v1.cu)
+target_link_libraries(TensorCoreGEMMV2 PRIVATE CUDA::cublas )
+target_link_libraries(TensorCoreGEMMV1 PRIVATE CUDA::cublas )
