@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <iostream>
 #include <cuda_runtime.h>
 #include "common/tester.h"
@@ -17,15 +18,13 @@ __global__ void hgemm_wmma_m16n16k16_naive_kernel(half *A, half *B, half *C,
 
   wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> C_frag;
   wmma::fill_fragment(C_frag, 0.0);
+  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major>
+      A_frag;
+  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major>
+      B_frag;
 
 #pragma unroll
   for (int k = 0; k < NUM_K_TILES; ++k) {
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half,
-                   wmma::row_major>
-        A_frag;
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half,
-                   wmma::row_major>
-        B_frag;
 
     wmma::load_matrix_sync(A_frag, A + load_gmem_a_m * K + k * WMMA_K, K);
     wmma::load_matrix_sync(B_frag, B + (k * WMMA_K) * N + load_gmem_b_n, N);
@@ -86,7 +85,11 @@ void hgemm_wmma_m16n16k16_naive(half *A, half *B, half *C, int M, int N,
   constexpr int WMMA_K = 16;
   dim3 block_dim(32, 1, 1);
   dim3 grid_dim(div_ceil(N, WMMA_N), div_ceil(M, WMMA_M));
-  hgemm_wmma_m16n16k16_naive_kernel<WMMA_M, WMMA_N, WMMA_K><<<grid_dim, block_dim>>>(A, B, C, M, N, K);
+  hgemm_wmma_m16n16k16_naive_kernel<WMMA_M, WMMA_N, WMMA_K>
+      <<<grid_dim, block_dim>>>(A, B, C, M, N, K);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess)
+    printf("CUDA Error: %s\n", cudaGetErrorString(err));
 }
 
 int main() {

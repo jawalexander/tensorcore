@@ -11,8 +11,8 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_kernel(half *A, half *B, half *C,
   const int NUM_K_TILES = div_ceil(K, WMMA_K);
   const int m_idx = threadIdx.y;
   const int n_idx = threadIdx.z;
-  const int load_gmem_a_m = blockIdx.y * WMMA_M * 4 + m_idx;
-  const int load_gmem_b_n = blockIdx.x * WMMA_N * 2 + n_idx;
+  const int load_gmem_a_m = blockIdx.y * WMMA_M * 4 + m_idx * WMMA_M;
+  const int load_gmem_b_n = blockIdx.x * WMMA_N * 2 + n_idx * WMMA_N;
   if (load_gmem_a_m >= M || load_gmem_b_n >= N)
     return;
 

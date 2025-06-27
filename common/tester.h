@@ -84,7 +84,7 @@ public:
         m_warmup_time = static_cast<double>(m_cuda_timer.end()) / static_cast<double>(m_warmup_iterations);
         HLOG("Warm up time: %.3f ms", m_warmup_time);
 
-        // cpuGemm(m_A->getHostPtr(), m_B->getHostPtr(), m_C->getHostPtr(), m_M,
+        // cpuGemm(m_A->getHostPtr(), m_B->getHostPtr(), m_base->getHostPtr(), m_M,
         //         m_N, m_K);
         if (m_enable_check) {
             m_C->moveToHost();
@@ -108,7 +108,7 @@ private:
             cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha,
             B,
                          CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C,
-                         CUDA_R_16F, N, CUBLAS_COMPUTE_32F,
+                         CUDA_R_16F, N, CUBLAS_COMPUTE_16F,
                          CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 
         // auto C_t = std::make_shared<Matrix>(M,N, "C_t");
@@ -139,7 +139,7 @@ private:
         for (size_t i = 0; i < m_profiling_iterations; ++i) {
           cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, B,
                        CUDA_R_16F, N, A, CUDA_R_16F, K, &beta, C, CUDA_R_16F, N,
-                       CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+                       CUBLAS_COMPUTE_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
         }
         m_base_time = static_cast<double>(m_cuda_timer.end()) /
                       static_cast<double>(m_profiling_iterations);
