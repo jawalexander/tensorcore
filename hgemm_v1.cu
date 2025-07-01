@@ -36,7 +36,7 @@ __global__ void hgemm_wmma_m16n16k16_naive_kernel(half *A, half *B, half *C,
   wmma::store_matrix_sync(C + load_gmem_a_m * N + load_gmem_b_n, C_frag, N,
                           wmma::mem_row_major);
 }
-// only 1 warp per block(32 threads), m16n16k16. A, B, C: all row_major.
+
 template <const int WMMA_M = 16, const int WMMA_N = 16, const int WMMA_K = 16>
 __global__ void hgemm_wmma_m16n16k16_float_naive_kernel(half *A, half *B,
                                                         half *C, int M, int N,

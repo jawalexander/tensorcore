@@ -30,13 +30,10 @@ public:
 
     if (initialized && fix_value >= 0.0) {
       std::random_device rd;
-      std::default_random_engine engine{rd()};
+      std::mt19937 generator(static_cast<unsigned int>(1));
       std::uniform_real_distribution<float> uniform(min, max);
       for (size_t i = 0; i < m_elem_num; ++i) {
-        m_host_ptr[i] = __float2half(uniform(engine));
-        if (i < 10) {
-          HLOG("%f", __half2float(m_host_ptr[i]));
-        }
+        m_host_ptr[i] = __float2half(uniform(generator));
       }
     } else {
       memset(m_host_ptr, 0, m_elem_num * sizeof(half));
@@ -121,9 +118,10 @@ public:
     HLOG("Max diff: %f, avg diff: %f", m_max_diff, m_avg_diff);
     int testnum = 0;
     HLOG("test:%d %f %f m_elem_num=%d ", testnum, (float)m_host_ptr[testnum],
-         (float)base->getHostPtr()[testnum], m_elem_num);
+         (float)base->getHostPtr()[testnum], (int)m_elem_num);
   }
 
+  size_t getSize() const { return m_elem_num; }
 private:
   const size_t m_row = 0;
   const size_t m_col = 0;

@@ -94,6 +94,13 @@ public:
         profile(std::forward<Func>(hgemm), name);
     }
 
+    Matrix *getA() { return m_A.get(); }
+
+    Matrix *getB() { return m_B.get(); }
+
+    Matrix *getC() { return m_C.get(); }
+
+    Matrix *getBase() { return m_base.get(); }
 private:
 
     void cublas_tensor_op(half *A, half *B, half *C, size_t M, size_t N, size_t K) {
