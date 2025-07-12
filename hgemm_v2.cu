@@ -26,8 +26,8 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_SMEM_kernel(half *A, half *B,
   const int n_idx = threadIdx.z;
   const int thread = threadIdx.x + blockDim.x * threadIdx.y +
                      blockDim.x * blockDim.y * threadIdx.z;
-  const int share_mem_a_m = blockIdx.y * WMMA_M * 4;
-  const int share_mem_b_n = blockIdx.x * WMMA_N * 2;
+  const int share_mem_a_m = blockIdx.y * WMMA_M * WMMA_TILE_M;
+  const int share_mem_b_n = blockIdx.x * WMMA_N * WMMA_TILE_N;
 
   const int load_gmem_a_m = share_mem_a_m + m_idx * WMMA_M;
   const int load_gmem_b_n = share_mem_b_n + n_idx * WMMA_N;
@@ -66,58 +66,13 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_SMEM_kernel(half *A, half *B,
 
     __syncthreads();
 
-#if 0
-    if (thread == 32) {
-      half *asmem = reinterpret_cast<half *>(smem);
-      half *bsem = reinterpret_cast<half *>(smem[4]);
-      for (int i = 0; i < 64; i++) {
-        for (int j = 0; j < 16; j++) {
-          printf("%f ", (float)asmem[i * 16 + j]);
-        }
-        printf("\n");
-      }
-      printf("====bsmem ==== \n");
-      for (int i = 0; i < 16; i++) {
-        for (int j = 0; j < 32; j++) {
-          printf("%f ", (float)bsem[i * 16 + j]);
-        }
-        printf("\n");
-      }
-    }
-#endif
     wmma::load_matrix_sync(
         A_frag, reinterpret_cast<half *>(smem) + m_idx * WMMA_K * 16, WMMA_K);
-    wmma::load_matrix_sync(B_frag,
-                           reinterpret_cast<half *>(smem[4]) + n_idx * 16,
-                           WMMA_N * WMMA_TILE_N);
+    wmma::load_matrix_sync(
+        B_frag, reinterpret_cast<half *>(smem[WMMA_TILE_M]) + n_idx * 16,
+        WMMA_N * WMMA_TILE_N);
 
     wmma::mma_sync(C_frag, A_frag, B_frag, C_frag);
-#if 0
-    if (threadIdx.y + threadIdx.z == 0 /*thread == 0*/) {
-      // printf("aptr=(%f %f %f %f %f %f %f %f ) "
-      //        "bptr=(%f %f %f %f %f %f %f %f ) "
-      //        "\n",
-      //        (float)aptr[0], (float)aptr[1], (float)aptr[2],
-      //        (float)aptr[3], (float)aptr[4], (float)aptr[5],
-      //        (float)aptr[6], (float)aptr[7], (float)bptr[0], (float)bptr[1],
-      //        (float)bptr[2], (float)bptr[3], (float)bptr[4], (float)bptr[5],
-      //        (float)bptr[6], (float)bptr[7]);
-      aptr = aptr + thread;
-      printf("tid=(%d %d %d) "
-             "A=(%f %f %f %f) "
-             "aptr=(%f %f %f %f) "
-             "B=(%f %f %f %f) "
-             "bptr=(%f %f %f %f) "
-             "C=(%f %f %f %f)\n",
-             threadIdx.x, threadIdx.y, threadIdx.z, (float)A_frag.x[0],
-             (float)A_frag.x[1], (float)A_frag.x[2], (float)A_frag.x[3],
-             (float)aptr[0], (float)aptr[1], (float)aptr[2], (float)aptr[3],
-             (float)B_frag.x[0], (float)B_frag.x[1], (float)B_frag.x[2],
-             (float)B_frag.x[3], (float)bptr[0], (float)bptr[1], (float)bptr[2],
-             (float)bptr[3], (float)C_frag.x[0], (float)C_frag.x[1],
-             (float)C_frag.x[2], (float)C_frag.x[3]);
-    }
-#endif
     __syncthreads();
   }
   wmma::store_matrix_sync(C + load_gmem_a_m * N + load_gmem_b_n, C_frag, N,
@@ -176,47 +131,6 @@ __global__ void hgemm_wmma_m16n16k16_mma4x2_kernel(half *A, half *B, half *C,
   wmma::store_matrix_sync(C + load_gmem_a_m * N + load_gmem_b_n, C_frag, N,
                           wmma::mem_row_major);
 }
-// only 1 warp per block(32 threads), m16n16k16. A, B, C: all row_major.
-template <const int WMMA_M = 16, const int WMMA_N = 16, const int WMMA_K = 16>
-__global__ void hgemm_wmma_m16n16k16_float_mma4x2_kernel(half *A, half *B,
-                                                        half *C, int M, int N,
-                                                        int K) {
-  const int NUM_K_TILES = div_ceil(K, WMMA_K);
-  const int load_gmem_a_m = blockIdx.y * WMMA_M;
-  const int load_gmem_b_n = blockIdx.x * WMMA_N;
-  if (load_gmem_a_m >= M || load_gmem_b_n >= N)
-    return;
-
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, float> C_frag;
-  wmma::fill_fragment(C_frag, 0.0f); // 注意使用0.0f
-
-#pragma unroll
-  for (int k = 0; k < NUM_K_TILES; ++k) {
-    wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half,
-                   wmma::row_major>
-        A_frag;
-    wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half,
-                   wmma::row_major>
-        B_frag;
-
-    wmma::load_matrix_sync(A_frag, A + load_gmem_a_m * K + k * WMMA_K, K);
-    wmma::load_matrix_sync(B_frag, B + (k * WMMA_K) * N + load_gmem_b_n, N);
-
-    wmma::mma_sync(C_frag, A_frag, B_frag, C_frag);
-
-    __syncthreads();
-  }
-
-  // 修改2: 将float累加器转换为half输出
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> C_frag_half;
-#pragma unroll
-  for (int i = 0; i < C_frag.num_elements; ++i) {
-    C_frag_half.x[i] = __float2half(C_frag.x[i]); // 显式类型转换
-  }
-  // 存储转换后的half结果
-  wmma::store_matrix_sync(C + load_gmem_a_m * N + load_gmem_b_n, C_frag_half, N,
-                          wmma::mem_row_major);
-}
 
 void hgemm_wmma_m16n16k16_SME_mma4x2(half *A, half *B, half *C, int M, int N,
                                      int K) {
@@ -245,73 +159,6 @@ void hgemm_wmma_m16n16k16_mma4x2(half *A, half *B, half *C, int M, int N,
                 div_ceil(M, WMMA_M * WMMA_TILE_M));
 
   hgemm_wmma_m16n16k16_mma4x2_kernel<WMMA_M, WMMA_N, WMMA_K>
-      <<<grid_dim, block_dim>>>(A, B, C, M, N, K);
-}
-
-template <const int WMMA_M = 16, const int WMMA_N = 16, const int WMMA_K = 16,
-          const int WMMA_TILE_M = 4, const int WMMA_TILE_N = 2>
-__global__ void hgemm_wmma_m16n16k16_mma4x2_SMEM_kernel2(half *A, half *B,
-                                                        half *C, int M, int N,
-                                                        int K)
-{
-  const int NUM_K_TILES = div_ceil(K, WMMA_K);
-  const int m_idx = threadIdx.y;
-  const int n_idx = threadIdx.z;
-  const int load_gmem_a_m = blockIdx.y * WMMA_M * 4 + m_idx * WMMA_M;
-  const int load_gmem_b_n = blockIdx.x * WMMA_N * 2 + n_idx * WMMA_N;
-  static_assert(WMMA_N == WMMA_K);
-  __shared__ half smem[WMMA_TILE_M + WMMA_TILE_N][WMMA_M * WMMA_N];
-
-  if (load_gmem_a_m >= M || load_gmem_b_n >= N)
-    return;
-
-  wmma::fragment<wmma::accumulator, WMMA_M, WMMA_N, WMMA_K, half> C_frag;
-  wmma::fill_fragment(C_frag, 0.0);
-
-  wmma::fragment<wmma::matrix_a, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major>
-      A_frag;
-  wmma::fragment<wmma::matrix_b, WMMA_M, WMMA_N, WMMA_K, half, wmma::row_major>
-      B_frag;
-
-  unsigned mmaIdx = threadIdx.x % 4;
-  unsigned mmaIdy = threadIdx.x / 4;
-  unsigned mmbIdx = threadIdx.x % 16;
-  unsigned mmbIdy = threadIdx.x / 16;
-
-#pragma unroll
-  for (int k = 0; k < NUM_K_TILES; ++k) {
-    auto aptr = A + load_gmem_a_m * K + k * WMMA_K;
-    auto bptr = B + (k * WMMA_K) * N + load_gmem_b_n;
-    reinterpret_cast<int64_t *>(smem)[threadIdx.x] =
-        reinterpret_cast<int64_t *>(aptr)[mmaIdx + mmaIdy * K / 4];
-    reinterpret_cast<int *>(smem[WMMA_TILE_M])[threadIdx.x] =
-        reinterpret_cast<int *>(bptr)[mmbIdx + mmbIdy * N / 2];
-    __syncthreads();
-
-    wmma::load_matrix_sync(A_frag, reinterpret_cast<half *>(smem), WMMA_K);
-    wmma::load_matrix_sync(B_frag, reinterpret_cast<half *>(smem[4]), WMMA_N);
-
-    wmma::mma_sync(C_frag, A_frag, B_frag, C_frag);
-
-    __syncthreads();
-  }
-  wmma::store_matrix_sync(C + load_gmem_a_m * N + load_gmem_b_n, C_frag, N,
-                          wmma::mem_row_major);
-}
-
-void hgemm_wmma_m16n16k16_SME_mma4x2_v0(half *A, half *B, half *C, int M, int N,
-                                        int K) {
-  constexpr int WMMA_M = 16;
-  constexpr int WMMA_N = 16;
-  constexpr int WMMA_K = 16;
-  constexpr int WMMA_TILE_M = 4;
-  constexpr int WMMA_TILE_N = 2;
-  dim3 block_dim(32, WMMA_TILE_M, WMMA_TILE_N);
-  dim3 grid_dim(div_ceil(N, WMMA_N),
-                div_ceil(M, WMMA_M));
-
-  hgemm_wmma_m16n16k16_mma4x2_SMEM_kernel2<WMMA_M, WMMA_N, WMMA_K, WMMA_TILE_M,
-                                           WMMA_TILE_N>
       <<<grid_dim, block_dim>>>(A, B, C, M, N, K);
 }
 

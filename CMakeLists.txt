@@ -17,8 +17,12 @@ find_package(CUDAToolkit REQUIRED)  # 替代旧的find_package(CUDA)
 
 include_directories(common)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -DCUBLAS_API_H=1")
-add_executable(TensorCoreGEMMV2 hgemm_v2.cu)
 add_executable(TensorCoreGEMMV1 hgemm_v1.cu)
-target_link_libraries(TensorCoreGEMMV2 PRIVATE CUDA::cublas )
+add_executable(TensorCoreGEMMV2 hgemm_v2.cu)
+add_executable(TensorCoreGEMMV3 hgemm_v3.cu)
 target_link_libraries(TensorCoreGEMMV1 PRIVATE CUDA::cublas )
+target_link_libraries(TensorCoreGEMMV2 PRIVATE CUDA::cublas )
+target_link_libraries(TensorCoreGEMMV3 PRIVATE CUDA::cublas )
+
+
 # target_compile_options(TensorCoreGEMMV2 PRIVATE --ptxas-options=-v)  
