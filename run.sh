@@ -8,6 +8,6 @@ clear
 set -e
 cmake -DCMAKE_BUILD_TYPE=Debug ..
 make -j32 #  VERBOSE=1 
-./TensorCoreGEMMV2
-echo "==============*******************************************====================="
 ./TensorCoreGEMMV3
+echo "==============*******************************************====================="
+./TensorCoreGEMMV4
