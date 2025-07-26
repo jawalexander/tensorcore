@@ -204,6 +204,7 @@ int main() {
   constexpr unsigned M = 2048;
   constexpr unsigned N = 2048;
   constexpr unsigned K = 2048;
+  static_assert(M >= 128 && N >= 128 && K % 16 == 0 && M % 16 == 0 && N % 16 == 0);
 
   Tester tester(M, N, K, 1, 10, 100, true);
   tester.evaluate(hgemm_wmma_m16n16k16_SME_mma4x2,
